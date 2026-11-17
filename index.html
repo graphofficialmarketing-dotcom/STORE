@@ -77,7 +77,12 @@ a{color:inherit}
 .clear{margin-top:18px}
 
 /* card */
-.card{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.card{position:relative;overflow:hidden;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:26px 20px 20px;display:flex;flex-direction:column;gap:10px}
+.card::before{content:"";position:absolute;inset:0 0 auto 0;height:6px;background:var(--tc)}
+.t-promo{--tc:#f2c230;--tci:#2b2300}
+.t-event{--tc:#6b4630;--tci:#fff}
+.typ{display:inline-flex;align-items:center;gap:6px;background:var(--tc);color:var(--tci);font-weight:600;font-size:13.5px;line-height:1.3;padding:4px 12px;border-radius:999px}
+.typ span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card.st-soon{border-color:var(--red)}
 .card.st-off{opacity:.6}
 .meta{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -138,8 +143,8 @@ a{color:inherit}
 .li .acts{display:flex;gap:6px;justify-content:flex-end}
 .li .st{font-size:13.5px;display:flex;align-items:center;gap:7px;font-weight:500}
 .li.st-off{opacity:.6}
-.tag{display:inline-block;font-family:"Jost";font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;border:1px solid var(--line);border-radius:3px;padding:1px 6px;margin-top:4px;color:var(--muted)}
-.tag.ev{border-color:var(--char);color:var(--char)}
+.tag{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:2px 10px;margin-top:5px;background:#f2c230;color:#2b2300}
+.tag.ev{background:#6b4630;color:#fff}
 .note{font-size:13.5px;color:var(--muted);margin-top:14px}
 .warn{border:1px solid var(--red);color:var(--red);border-radius:4px;padding:10px 14px;font-size:14.5px;margin-bottom:18px}
 .login{max-width:420px;margin:56px 0}
@@ -276,9 +281,9 @@ a{color:inherit}
   function promoCard({p,st}){
     const t=todayISO();
     const prep=(st.k==="up"&&(p.prep||p.prepDate))?'<div class="prep"><span>📦</span><span>'+esc(p.prep||"เตรียมก่อนเริ่ม")+(p.prepDate?' <b>ภายใน '+fmt(p.prepDate)+'</b>':'')+'</span></div>':"";
-    return '<article class="card st-'+st.k+'">'+
-      '<div class="meta"><span class="lbl">'+esc(p.category||"โปรโมชั่น")+'</span><span class="state">'+dotHTML(st.k)+esc(st.label)+'</span></div>'+
-      '<h3>'+esc(p.title)+'</h3>'+(p.org?'<div class="sub">'+esc(p.org)+'</div>':'')+
+    return '<article class="card t-'+(p.type==="event"?"event":"promo")+' st-'+st.k+'">'+
+      '<div class="meta"><span class="typ"><b>🏷</b><span>โปรโมชั่น</span></span><span class="state">'+dotHTML(st.k)+esc(st.label)+'</span></div>'+
+      (p.category?'<div class="lbl" style="margin-bottom:-6px">'+esc(p.category)+'</div>':'')+'<h3>'+esc(p.title)+'</h3>'+(p.org?'<div class="sub">'+esc(p.org)+'</div>':'')+
       '<div class="period"><b>'+range(p,"long")+'</b><span>ระยะเวลา '+dur(p)+' วัน</span></div>'+
       (p.detail?'<p class="detail">'+esc(p.detail)+'</p>':'')+
       (p.cond?'<p class="cond">เงื่อนไข · '+esc(p.cond)+'</p>':'')+
@@ -290,8 +295,8 @@ a{color:inherit}
   }
   function eventCard({p,st}){
     const facts=[["สถานที่",p.location],["จำนวน",cupsText(p)],["เมนู",p.menu],["ผู้ประสานงาน",p.contact]].filter(x=>x[1]);
-    return '<article class="card st-'+st.k+'">'+
-      '<div class="meta"><span class="lbl">งานแจกกาแฟ</span><span class="state">'+dotHTML(st.k)+esc(st.label)+'</span></div>'+
+    return '<article class="card t-'+(p.type==="event"?"event":"promo")+' st-'+st.k+'">'+
+      '<div class="meta"><span class="typ"><b>☕</b><span>งานแจกกาแฟ</span></span><span class="state">'+dotHTML(st.k)+esc(st.label)+'</span></div>'+
       '<h3>'+esc(p.title)+'</h3>'+(p.client?'<div class="sub">'+esc(p.client)+'</div>':'')+
       '<div class="period"><b>'+range(p,"wk")+'</b><span>'+(time(p)||"ยังไม่ระบุเวลา")+'</span></div>'+
       (facts.length?'<dl class="facts">'+facts.map(f=>'<dt>'+f[0]+'</dt><dd>'+esc(f[1])+'</dd>').join("")+'</dl>':'')+
@@ -364,7 +369,7 @@ a{color:inherit}
     list.sort((a,b)=>order[a.st.k]-order[b.st.k]||(a.st.k==="up"?a.p.start.localeCompare(b.p.start):a.st.k==="off"?b.p.end.localeCompare(a.p.end):a.p.end.localeCompare(b.p.end)));
     const rows=list.map(({p,st})=>'<div class="li st-'+st.k+'">'+
         '<div class="st">'+dotHTML(st.k)+esc(st.label)+'</div>'+
-        '<div class="main"><div class="t">'+esc(p.title)+'</div><div class="s">'+esc(p.type==="event"?(p.client||p.location||""):(p.org||p.category||""))+'</div><span class="tag'+(p.type==="event"?' ev':'')+'">'+(p.type==="event"?"Coffee Giveaway":"Promotion")+'</span></div>'+
+        '<div class="main"><div class="t">'+esc(p.title)+'</div><div class="s">'+esc(p.type==="event"?(p.client||p.location||""):(p.org||p.category||""))+'</div><span class="tag'+(p.type==="event"?' ev':'')+'">'+(p.type==="event"?"☕ งานแจกกาแฟ":"🏷 โปรโมชั่น")+'</span></div>'+
         '<div class="when">'+range(p)+(p.type==="event"&&time(p)?'<div class="s">'+time(p)+'</div>':'')+'</div>'+
         '<div class="br s">'+branchSummary(p)+'</div>'+
         '<div class="acts"><button class="btn sm ghost" data-edit="'+esc(p.id)+'">แก้ไข</button><button class="btn sm del" data-del="'+esc(p.id)+'">ลบ</button></div>'+
