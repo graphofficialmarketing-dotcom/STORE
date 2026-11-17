@@ -216,6 +216,13 @@ a{color:inherit}
   function fmt(iso,mode){if(!iso)return "";const [y,m,d]=iso.split("-").map(Number);const o=mode==="full"?{weekday:"long",day:"numeric",month:"long",year:"numeric"}:mode==="long"?{day:"numeric",month:"long",year:"numeric"}:mode==="wk"?{weekday:"short",day:"numeric",month:"short",year:"2-digit"}:{day:"numeric",month:"short",year:"2-digit"};try{return new Date(y,m-1,d).toLocaleDateString("th-TH",o);}catch(e){return iso;}}
   function range(p,mode){return p.start===p.end?fmt(p.start,mode):fmt(p.start,mode)+" – "+fmt(p.end,mode);}
   const time=p=>p.timeStart?(p.timeStart+(p.timeEnd?"–"+p.timeEnd:"")+" น."):"";
+  const num=x=>{const n=Number(x);return isFinite(n)?n.toLocaleString("th-TH"):String(x);};
+  function cupsText(p){
+    const a=[];
+    if(p.cupsDay) a.push(num(p.cupsDay)+" แก้ว/วัน");
+    if(p.cups) a.push((p.cupsDay?"รวม ":"")+num(p.cups)+" แก้ว"+(p.cupsDay&&p.start!==p.end?" ("+dur(p)+" วัน)":""));
+    return a.join(" · ");
+  }
   const dur=p=>toDay(p.end)-toDay(p.start)+1;
   function status(p,t){
     const s=toDay(p.start),e=toDay(p.end),n=toDay(t);
@@ -281,7 +288,7 @@ a{color:inherit}
     '</article>';
   }
   function eventCard({p,st}){
-    const facts=[["สถานที่",p.location],["จำนวน",p.cups?p.cups+" แก้ว":""],["เมนู",p.menu],["ผู้ประสานงาน",p.contact]].filter(x=>x[1]);
+    const facts=[["สถานที่",p.location],["จำนวน",cupsText(p)],["เมนู",p.menu],["ผู้ประสานงาน",p.contact]].filter(x=>x[1]);
     return '<article class="card st-'+st.k+'">'+
       '<div class="meta"><span class="lbl">งานแจกกาแฟ</span><span class="state">'+dotHTML(st.k)+esc(st.label)+'</span></div>'+
       '<h3>'+esc(p.title)+'</h3>'+(p.client?'<div class="sub">'+esc(p.client)+'</div>':'')+
@@ -409,7 +416,7 @@ a{color:inherit}
   function openForm(type,p){
     const isNew=!p, t=todayISO(), ev=type==="event";
     const defBr=ev?(branch("catering")?["catering"]:[]):state.branches.filter(b=>b.brand==="graph"&&b.id!=="catering").map(b=>b.id);
-    p=p?clone(p):{id:"",type,title:"",category:PROMO_CATS[0],org:"",detail:"",cond:"",staff:"",prep:"",prepDate:"",code:"",start:t,end:t,branches:defBr,client:"",location:"",timeStart:"",timeEnd:"",cups:"",menu:"",contact:""};
+    p=p?clone(p):{id:"",type,title:"",category:PROMO_CATS[0],org:"",detail:"",cond:"",staff:"",prep:"",prepDate:"",code:"",start:t,end:t,branches:defBr,client:"",location:"",timeStart:"",timeEnd:"",cupsDay:"",cups:"",menu:"",contact:""};
     const cats=PROMO_CATS.includes(p.category)?PROMO_CATS:[p.category].concat(PROMO_CATS);
     let body;
     if(ev){
@@ -418,7 +425,8 @@ a{color:inherit}
         '<div class="two">'+fld("วันที่เริ่ม *",inp("start",p.start,"","date"))+fld("ถึงวันที่ *",inp("end",p.end,"","date"),"(งานวันเดียวใส่วันเดียวกัน)")+'</div>'+
         '<div class="two">'+fld("เวลาเริ่ม",inp("timeStart",p.timeStart,"","time"))+fld("เวลาจบ",inp("timeEnd",p.timeEnd,"","time"))+'</div>'+
         fld("สถานที่",inp("location",p.location,"เช่น ลานหน้าห้าง One Nimman"))+
-        '<div class="two">'+fld("จำนวน (แก้ว)",inp("cups",p.cups,"เช่น 300","number"))+fld("เมนู",inp("menu",p.menu,"เช่น อเมริกาโน่เย็น, ลาเต้"))+'</div>'+
+        '<div class="two">'+fld("จำนวนต่อวัน (แก้ว)",inp("cupsDay",p.cupsDay,"เช่น 300","number"))+fld("จำนวนทั้งหมด (แก้ว)",inp("cups",p.cups,"คำนวณให้อัตโนมัติ","number")+'<span class="hint" data-calc></span>')+'</div>'+
+        fld("เมนู",inp("menu",p.menu,"เช่น อเมริกาโน่เย็น, ลาเต้"))+
         fld("ผู้ประสานงาน",inp("contact",p.contact,"ชื่อ / เบอร์โทร"))+
         fld("ทีมต้องเตรียม",ta("staff",p.staff,"เช่น เครื่องชง 2 ชุด, แก้ว 300 ใบ, ป้ายแบรนด์"),"(1 บรรทัด = 1 ข้อ)")+
         fld("หมายเหตุ",ta("detail",p.detail,""))+
@@ -442,7 +450,21 @@ a{color:inherit}
     const boxes=[...f.querySelectorAll('input[name="br"]')], all=f.querySelector("[data-all]");
     const syncAll=()=>{all.checked=boxes.length>0&&boxes.every(b=>b.checked);};
     syncAll();all.addEventListener("change",()=>boxes.forEach(b=>b.checked=all.checked));boxes.forEach(b=>b.addEventListener("change",syncAll));
-    if(ev){const s=f.elements.start,e=f.elements.end;s.addEventListener("change",()=>{if(!e.value||e.value<s.value)e.value=s.value;});}
+    if(ev){
+      const s=f.elements.start,e=f.elements.end,cd=f.elements.cupsDay,ct=f.elements.cups,hint=f.querySelector("[data-calc]");
+      const days=()=>(/^\d{4}-\d{2}-\d{2}$/.test(s.value)&&/^\d{4}-\d{2}-\d{2}$/.test(e.value)&&e.value>=s.value)?toDay(e.value)-toDay(s.value)+1:0;
+      let manual=!!(p.cups&&p.cupsDay&&Number(p.cups)!==Number(p.cupsDay)*dur(p));
+      function calc(){
+        const d=days(),per=Number(cd.value);
+        if(!manual&&cd.value!==""&&per>=0&&d) ct.value=String(per*d);
+        hint.textContent=(cd.value!==""&&d)?(manual?"คำนวณได้ "+num(per*d)+" แก้ว ("+num(per)+" × "+d+" วัน) · กรอกเองอยู่":"= "+num(per)+" แก้ว × "+d+" วัน"):"";
+      }
+      s.addEventListener("change",()=>{if(!e.value||e.value<s.value)e.value=s.value;calc();});
+      e.addEventListener("change",calc);
+      cd.addEventListener("input",calc);
+      ct.addEventListener("input",()=>{manual=ct.value!=="";calc();});
+      calc();
+    }
     f.querySelector("[data-x]").onclick=closeDlg;
     f.elements.title.focus();
     f.addEventListener("submit",e=>{
@@ -455,7 +477,7 @@ a{color:inherit}
       if(v("end")<v("start")){err.textContent="วันสิ้นสุดต้องไม่ก่อนวันเริ่ม";return;}
       if(!br.length){err.textContent="กรุณาเลือกอย่างน้อย 1 สาขา";return;}
       const np={id:p.id||((ev?"e":"p")+Date.now().toString(36)),type:ev?"event":"promo",title:v("title"),start:v("start"),end:v("end"),branches:br,detail:v("detail"),staff:f.elements.staff.value.trim()};
-      if(ev) Object.assign(np,{client:v("client"),location:v("location"),timeStart:v("timeStart"),timeEnd:v("timeEnd"),cups:v("cups"),menu:v("menu"),contact:v("contact")});
+      if(ev) Object.assign(np,{client:v("client"),location:v("location"),timeStart:v("timeStart"),timeEnd:v("timeEnd"),cupsDay:v("cupsDay"),cups:v("cups"),menu:v("menu"),contact:v("contact")});
       else Object.assign(np,{category:v("category"),org:v("org"),cond:v("cond"),prep:v("prep"),prepDate:v("prepDate"),code:v("code")});
       state.items=isNew?items().concat([np]):items().map(x=>x.id===np.id?np:x);
       closeDlg();persist();
@@ -500,7 +522,7 @@ a{color:inherit}
     const g=groups(visible()),t=todayISO();
     const line=({p,st})=>{
       let s="• "+p.title+(p.type==="event"?" [งานแจกกาแฟ]":"")+"\n   "+range(p,"long")+(time(p)?" "+time(p):"")+" ("+st.label+")";
-      if(p.type==="event"){if(p.location)s+="\n   สถานที่: "+p.location;if(p.cups)s+="\n   จำนวน: "+p.cups+" แก้ว";if(p.menu)s+="\n   เมนู: "+p.menu;}
+      if(p.type==="event"){if(p.location)s+="\n   สถานที่: "+p.location;if(p.cupsDay||p.cups)s+="\n   จำนวน: "+cupsText(p);if(p.menu)s+="\n   เมนู: "+p.menu;}
       if(p.cond) s+="\n   เงื่อนไข: "+p.cond;
       lines(p.staff).forEach(x=>s+="\n   – "+x);
       if(st.k==="up"&&p.prep) s+="\n   📦 "+p.prep+(p.prepDate?" ภายใน "+fmt(p.prepDate,"long"):"");
