@@ -140,6 +140,9 @@ a{color:inherit}
 .tag{display:inline-block;font-family:"Jost";font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;border:1px solid var(--line);border-radius:3px;padding:1px 6px;margin-top:4px;color:var(--muted)}
 .tag.ev{border-color:var(--char);color:var(--char)}
 .note{font-size:13.5px;color:var(--muted);margin-top:14px}
+.warn{border:1px solid var(--red);color:var(--red);border-radius:4px;padding:10px 14px;font-size:14.5px;margin-bottom:18px}
+.login{max-width:420px;margin:56px 0}
+.login h1{font-size:26px;margin:6px 0 20px}
 
 /* dialog */
 .ov{position:fixed;inset:0;background:rgba(17,17,17,.42);display:none;align-items:center;justify-content:center;padding:16px;z-index:20}
@@ -202,7 +205,8 @@ a{color:inherit}
   const raw=document.getElementById("state").textContent;
   let saved=JSON.parse(raw), state=JSON.parse(raw);
   let route="all", filter="all", showOff=false, mkType="all", mkTime="now", saving="idle";
-  let art=null, artTried=false;
+  let version=0, dbOk=null, loaded=false, pw="";
+  try{pw=sessionStorage.getItem("pb_pw")||"";}catch(e){}
   const app=document.getElementById("app");
   const clone=o=>JSON.parse(JSON.stringify(o));
 
@@ -361,7 +365,8 @@ a{color:inherit}
       '<div class="bar"><div class="bar-l">'+brandsHTML()+'<span class="kicker">Marketing · '+esc(state.brand)+'</span></div><span class="date">'+fmt(t,"full")+'</span></div>'+
       '<div class="mk-head"><div><div class="lbl">สำหรับทีมการตลาด</div><h1>จัดการโปรโมชั่น &amp; งานแจกกาแฟ</h1>'+
         '<p>เพิ่มหรือแก้ไขข้อมูลที่นี่ หน้าร้านทุกสาขาจะเห็นข้อมูลใหม่ทันทีหลังบันทึก</p></div>'+
-        '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+saverHTML()+'<a class="btn ghost" href="#all">ดูหน้าร้าน →</a><button class="btn ghost" data-branches>จัดการสาขา</button></div></div>'+
+        '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+saverHTML()+'<a class="btn ghost" href="#all">ดูหน้าร้าน →</a><button class="btn ghost" data-branches>จัดการสาขา</button><button class="btn ghost" data-logout>ออกจากระบบ</button></div></div>'+
+      (dbOk===false?'<div class="warn">ยังไม่ได้เชื่อมฐานข้อมูล — ข้อมูลที่เห็นเป็นข้อมูลตั้งต้นในไฟล์ และยังบันทึกไม่ได้ ดูวิธีตั้งค่าใน README</div>':'')+
       '<div class="adds">'+
         '<button class="add" data-add="promo"><span><b>เพิ่มโปรโมชั่น</b><span class="muted">ส่วนลด แถม แคมเปญ กิจกรรมร่วมกับพาร์ตเนอร์</span></span><span class="plus">+</span></button>'+
         '<button class="add" data-add="event"><span><b>เพิ่มงานแจกกาแฟ</b><span class="muted">วัน เวลา สถานที่ จำนวนแก้ว ทีมที่ดูแล</span></span><span class="plus">+</span></button>'+
@@ -376,7 +381,19 @@ a{color:inherit}
     '</div>';
   }
 
-  function render(){ if(route===MK) renderMarketing(); else renderStore(); }
+  function renderLogin(msg){
+    app.innerHTML='<div class="wrap"><div class="bar"><div class="bar-l">'+brandsHTML()+'<span class="kicker">Marketing</span></div><span class="date">'+fmt(todayISO(),"full")+'</span></div>'+
+      '<form class="login" novalidate><div class="lbl">สำหรับทีมการตลาด</div><h1>เข้าสู่ระบบเพื่อเพิ่มข้อมูล</h1>'+
+      '<div class="fld"><label for="pw">รหัสผ่าน</label><input id="pw" type="password" autocomplete="current-password"></div>'+
+      '<div class="err">'+esc(msg||"")+'</div><div class="dlg-act" style="justify-content:flex-start"><button class="btn solid" type="submit">เข้าสู่ระบบ</button><a class="btn ghost" href="#all">กลับหน้าร้าน</a></div></form></div>';
+    const f=app.querySelector("form"),i=f.querySelector("#pw");i.focus();
+    f.addEventListener("submit",async e=>{e.preventDefault();const b=f.querySelector("button[type=submit]");b.disabled=true;b.textContent="กำลังตรวจสอบ…";const m=await login(i.value);if(m)renderLogin(m);else render();});
+  }
+  function render(){
+    if(!loaded){app.innerHTML='<div class="wrap"><div class="bar"><div class="bar-l">'+brandsHTML()+'<span class="kicker">Promotion Board</span></div></div><p class="muted" style="padding:40px 0">กำลังโหลดข้อมูล…</p></div>';return;}
+    if(route===MK){ if(!pw) renderLogin(); else renderMarketing(); }
+    else renderStore();
+  }
 
   /* ---------- dialogs ---------- */
   const ov=document.createElement("div");ov.className="ov";document.body.appendChild(ov);
@@ -506,33 +523,48 @@ a{color:inherit}
     }
   }
 
-  /* ---------- save ---------- */
-  function buildDoc(data){
-    const json=JSON.stringify(data).replace(/</g,"\\u003c");
-    const g=id=>document.getElementById(id).textContent;
-    return '<!DOCTYPE html>\n<html lang="th">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>บอร์ดโปรโมชั่นประจำสาขา</title>\n'+
-      '<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'+
-      '<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">\n'+
-      '<style id="css">'+g("css")+'</style>\n</head>\n<body>\n<div id="app"></div>\n'+
-      '<script id="logos" type="application/json">'+g("logos")+'<\/script>\n'+
-      '<script id="state" type="application/json">'+json+'<\/script>\n'+
-      '<script id="main">'+g("main")+'<\/script>\n</body>\n</html>\n';
+  /* ---------- data (Vercel API) ---------- */
+  async function api(method,body){
+    const opt={method,headers:{"Content-Type":"application/json"},cache:"no-store"};
+    if(body){opt.body=JSON.stringify(body);opt.headers["x-admin-password"]=pw;}
+    const r=await fetch("/api/data",opt);
+    let j={};try{j=await r.json();}catch(e){}
+    return {status:r.status,j};
+  }
+  async function load(){
+    try{
+      const {status,j}=await api("GET");
+      if(status!==200) throw new Error("http "+status);
+      dbOk=j.configured!==false;
+      if(j.state&&Array.isArray(j.state.items)){state=j.state;}
+      version=j.version||0;
+    }catch(e){dbOk=false;}
+    saved=clone(state);loaded=true;
+    if(!ov.classList.contains("show")){readHash();render();}
+  }
+  function setPw(v){pw=v;try{v?sessionStorage.setItem("pb_pw",v):sessionStorage.removeItem("pb_pw");}catch(e){}}
+  async function login(v){
+    setPw(v);
+    try{
+      const {status,j}=await api("POST",{action:"check"});
+      if(status===200) return "";
+      setPw("");
+      if(status===401) return "รหัสผ่านไม่ถูกต้อง";
+      if(j.error==="no_password") return "ยังไม่ได้ตั้งค่า ADMIN_PASSWORD ใน Vercel";
+      return "เข้าสู่ระบบไม่สำเร็จ ("+status+")";
+    }catch(e){setPw("");return "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้";}
   }
   async function persist(){
     saving="saving";render();
-    if(!artTried){artTried=true;try{art=await (window.claude&&window.claude.use?window.claude.use("artifact"):null);}catch(e){art=null;}}
-    if(!art){saving="error";render();toast("บันทึกจากหน้าจอนี้ไม่ได้ — เปิดลิงก์นี้ใน Claude ด้วยบัญชีที่มีสิทธิ์แก้ไข");return;}
     const next=clone(state); next.updated=todayISO();
-    try{sessionStorage.setItem("pb_return",JSON.stringify({h:location.hash,t:Date.now()}));}catch(e){}
     try{
-      await art.publish(buildDoc(next));
-      state=next;saved=clone(next);saving="idle";render();toast("บันทึกแล้ว");
-    }catch(e){
-      const c=String((e&&(e.code||e.name||e.message))||"");
-      if(/conflict/i.test(c)){toast("มีคนบันทึกพร้อมกัน หน้าจะโหลดข้อมูลล่าสุด กรุณาลองใหม่");}
-      else if(/not_granted|not_writer/i.test(c)){state=clone(saved);saving="readonly";render();}
-      else{saving="error";render();toast("บันทึกไม่สำเร็จ");}
-    }
+      const {status,j}=await api("POST",{action:"save",version,state:next});
+      if(status===200){state=next;saved=clone(next);version=j.version;saving="idle";render();toast("บันทึกแล้ว หน้าร้านเห็นข้อมูลใหม่แล้ว");return;}
+      if(status===401){state=clone(saved);setPw("");saving="idle";render();toast("รหัสผ่านไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่");return;}
+      if(status===409){state=j.state;saved=clone(j.state);version=j.version;saving="idle";render();toast("มีคนแก้ข้อมูลก่อนหน้า โหลดข้อมูลล่าสุดแล้ว กรุณาทำรายการอีกครั้ง");return;}
+      if(status===503){saving="error";render();toast("ยังไม่ได้เชื่อมฐานข้อมูลใน Vercel");return;}
+      throw new Error("http "+status);
+    }catch(e){saving="error";render();toast("บันทึกไม่สำเร็จ ลองอีกครั้ง");}
   }
 
   /* ---------- events ---------- */
@@ -547,6 +579,7 @@ a{color:inherit}
     else if(d.del){const p=items().find(x=>x.id===d.del);if(p)confirmDel(p);}
     else if("branches" in d) openBranches();
     else if("retry" in d) persist();
+    else if("logout" in d){setPw("");render();}
     else if(d.mktype){mkType=d.mktype;render();}
     else if(d.mktime){mkTime=d.mktime;render();}
   });
@@ -558,9 +591,11 @@ a{color:inherit}
   let lastDay=todayISO();
   setInterval(()=>{const d=todayISO();if(d!==lastDay){lastDay=d;if(!ov.classList.contains("show"))render();}},60000);
 
-  try{const r=JSON.parse(sessionStorage.getItem("pb_return")||"null");if(r&&Date.now()-r.t<60000&&r.h&&!location.hash){history.replaceState(null,"",r.h);}sessionStorage.removeItem("pb_return");}catch(e){}
+  // หน้าร้านดึงข้อมูลใหม่ทุก 3 นาที (เปิดจอทิ้งไว้ได้)
+  setInterval(()=>{if(route!==MK&&!ov.classList.contains("show"))load();},180000);
   readHash();
   render();
+  load();
 })();
 </script>
 </body>
